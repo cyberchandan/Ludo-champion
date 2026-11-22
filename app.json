@@ -1,0 +1,47 @@
+{
+  "expo": {
+    "name": "Ludo Champion",
+    "slug": "ludo-champion",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "ludo-champion",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ludochampion.game"
+    },
+    "android": {
+      "package": "com.ludochampion.game",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#1A1A2E",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "permissions": [
+        "VIBRATE"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font",
+      [
+        "expo-av",
+        {
+          "microphonePermission": false
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "ludo-champion-placeholder-id"
+      }
+    }
+  }
+}
