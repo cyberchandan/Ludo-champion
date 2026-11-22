@@ -37,11 +37,6 @@
           "microphonePermission": false
         }
       ]
-    ],
-    "extra": {
-      "eas": {
-        "projectId": "ludo-champion-placeholder-id"
-      }
-    }
+    ]
   }
 }
