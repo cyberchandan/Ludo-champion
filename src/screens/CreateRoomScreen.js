@@ -11,12 +11,14 @@ import {
   ActivityIndicator,
   Share,
   Alert,
+  TextInput,
+  Modal,
   SafeAreaView,
   StatusBar,
 } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { apiCreateRoom } from '../services/api';
+import { apiCreateRoom, getServerUrl, setServerUrl } from '../services/api';
 import { getPlayerProfile } from '../utils/playerProfile';
 import { soundManager } from '../utils/soundManager';
 
@@ -26,7 +28,15 @@ export default function CreateRoomScreen({ onRoomCreated, onBack }) {
   const [roomData, setRoomData] = useState(null);
   const [copied, setCopied] = useState(false);
 
+  const [isServerModalVisible, setIsServerModalVisible] = useState(false);
+  const [currentServerUrl, setCurrentServerUrl] = useState('');
+  const [tempServerUrl, setTempServerUrl] = useState('');
+
   useEffect(() => {
+    getServerUrl().then((url) => {
+      setCurrentServerUrl(url);
+      setTempServerUrl(url);
+    });
     createRoom();
   }, []);
 
@@ -42,9 +52,20 @@ export default function CreateRoomScreen({ onRoomCreated, onBack }) {
       setRoomData(res.room);
     } catch (err) {
       console.error('Failed to create room:', err);
-      setError(err.message || 'Could not connect to multiplayer server.');
+      const url = await getServerUrl();
+      setError(`Cannot reach server at ${url}.\n\nEnsure backend server is running ("npm run server") and devices share the same Wi-Fi.`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSaveServerUrl = async () => {
+    if (tempServerUrl.trim()) {
+      soundManager.playClick();
+      await setServerUrl(tempServerUrl.trim());
+      setCurrentServerUrl(tempServerUrl.trim());
+      setIsServerModalVisible(false);
+      createRoom();
     }
   };
 
@@ -91,7 +112,16 @@ export default function CreateRoomScreen({ onRoomCreated, onBack }) {
           <MaterialCommunityIcons name="arrow-left" size={24} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>PRIVATE ROOM</Text>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity
+          onPress={() => {
+            soundManager.playClick();
+            setIsServerModalVisible(true);
+          }}
+          style={styles.serverSettingsBtn}
+          accessibilityLabel="Server Connection Settings"
+        >
+          <MaterialCommunityIcons name="server-network" size={22} color="#38BDF8" />
+        </TouchableOpacity>
       </View>
 
       <View style={styles.content}>
@@ -105,10 +135,19 @@ export default function CreateRoomScreen({ onRoomCreated, onBack }) {
             <MaterialCommunityIcons name="alert-circle-outline" size={54} color="#EF4444" />
             <Text style={styles.errorTitle}>Room Creation Failed</Text>
             <Text style={styles.errorMsg}>{error}</Text>
-            <TouchableOpacity onPress={createRoom} style={styles.retryBtn}>
-              <MaterialCommunityIcons name="refresh" size={20} color="#FFFFFF" />
-              <Text style={styles.retryText}>Try Again</Text>
-            </TouchableOpacity>
+            <View style={styles.errorActionsRow}>
+              <TouchableOpacity onPress={createRoom} style={styles.retryBtn}>
+                <MaterialCommunityIcons name="refresh" size={20} color="#FFFFFF" />
+                <Text style={styles.retryText}>Try Again</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => setIsServerModalVisible(true)}
+                style={styles.changeIpBtn}
+              >
+                <MaterialCommunityIcons name="cog-outline" size={18} color="#38BDF8" />
+                <Text style={styles.changeIpText}>Change Server IP</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         ) : (
           <View style={styles.successContainer}>
@@ -161,6 +200,46 @@ export default function CreateRoomScreen({ onRoomCreated, onBack }) {
           </View>
         )}
       </View>
+
+      {/* Server IP Settings Modal */}
+      <Modal
+        visible={isServerModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsServerModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Multiplayer Server IP</Text>
+            <Text style={styles.modalDesc}>
+              Enter your computer's Wi-Fi IP address (e.g. http://192.168.31.221:3000):
+            </Text>
+            <TextInput
+              style={styles.serverInput}
+              value={tempServerUrl}
+              onChangeText={setTempServerUrl}
+              placeholder="http://192.168.31.221:3000"
+              placeholderTextColor="#64748B"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <View style={styles.modalButtonsRow}>
+              <TouchableOpacity
+                onPress={() => setIsServerModalVisible(false)}
+                style={styles.modalCancelBtn}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSaveServerUrl}
+                style={styles.modalSaveBtn}
+              >
+                <Text style={styles.modalSaveText}>Save & Connect</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -180,6 +259,14 @@ const styles = StyleSheet.create({
     borderBottomColor: '#1E293B',
   },
   backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#1E293B',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  serverSettingsBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -227,20 +314,102 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 18,
   },
+  errorActionsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 8,
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+  },
   retryBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     backgroundColor: '#2563EB',
     paddingVertical: 12,
-    paddingHorizontal: 20,
+    paddingHorizontal: 18,
     borderRadius: 12,
-    marginTop: 8,
   },
   retryText: {
     color: '#FFFFFF',
     fontWeight: '800',
+    fontSize: 13,
+  },
+  changeIpBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: '#334155',
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+  },
+  changeIpText: {
+    color: '#38BDF8',
+    fontWeight: '800',
+    fontSize: 13,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    width: '100%',
+    backgroundColor: '#1E293B',
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginBottom: 8,
+  },
+  modalDesc: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginBottom: 14,
+    lineHeight: 18,
+  },
+  serverInput: {
+    backgroundColor: '#0F172A',
+    borderRadius: 10,
+    padding: 12,
+    color: '#FFFFFF',
     fontSize: 14,
+    borderWidth: 1,
+    borderColor: '#38BDF8',
+    marginBottom: 16,
+  },
+  modalButtonsRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  modalCancelBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    backgroundColor: '#334155',
+  },
+  modalCancelText: {
+    color: '#CBD5E1',
+    fontWeight: '700',
+  },
+  modalSaveBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    backgroundColor: '#2563EB',
+  },
+  modalSaveText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
   },
   successContainer: {
     alignItems: 'center',

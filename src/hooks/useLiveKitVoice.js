@@ -4,9 +4,30 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Platform } from 'react-native';
+import { NativeModules, Platform } from 'react-native';
+import Constants from 'expo-constants';
 import { apiGetVoiceToken } from '../services/api';
 import { getPlayerProfile } from '../utils/playerProfile';
+
+/**
+ * Checks whether native WebRTC is available in the current runtime environment.
+ * - In Expo Go: Custom native WebRTC C++ binaries are not bundled, so this returns false.
+ * - In Expo Development Build (npx expo run:android or EAS): Returns true.
+ */
+export function isWebRTCSupported() {
+  try {
+    if (
+      Constants?.appOwnership === 'expo' ||
+      Constants?.executionEnvironment === 'storeClient'
+    ) {
+      return false;
+    }
+
+    return Boolean(NativeModules && NativeModules.LKRNWebRTCModule);
+  } catch (e) {
+    return false;
+  }
+}
 
 export function useLiveKitVoice(roomCode, isEnabled = true) {
   const [isVoiceConnected, setIsVoiceConnected] = useState(false);
@@ -31,21 +52,38 @@ export function useLiveKitVoice(roomCode, isEnabled = true) {
       try {
         const profile = await getPlayerProfile();
 
-        // 1. Fetch secure token from backend
-        const tokenRes = await apiGetVoiceToken({
-          roomCode,
-          playerId: profile.id,
-          playerName: profile.name,
-        });
+        // 1. Fetch secure token from backend (verifies backend route & room credentials)
+        let tokenRes = null;
+        try {
+          tokenRes = await apiGetVoiceToken({
+            roomCode,
+            playerId: profile.id,
+            playerName: profile.name,
+          });
+        } catch (tokenErr) {
+          console.warn('[LiveKit] Voice token notice:', tokenErr.message);
+        }
 
         if (!isMounted) return;
 
-        // 2. Dynamically import LiveKit to support Expo Go graceful fallback
+        // 2. Safeguard for Expo Go:
+        // Standard Expo Go does not bundle native WebRTC binaries.
+        // We MUST NOT require('@livekit/react-native') in Expo Go, as evaluating
+        // @livekit/react-native-webrtc throws an unhandled native module error.
+        if (!isWebRTCSupported()) {
+          console.log('[LiveKit] Running in Expo Go (WebRTC native module not present). Enabling graceful voice preview mode.');
+          setIsExpoGoFallback(true);
+          setIsVoiceConnected(true);
+          setIsConnecting(false);
+          return;
+        }
+
+        // 3. Dynamically import LiveKit only when native WebRTC is confirmed present
         let LiveKitSDK;
         try {
           LiveKitSDK = require('@livekit/react-native');
         } catch (e) {
-          console.warn('[LiveKit] Native WebRTC module not available in Expo Go. Running voice in simulation mode.');
+          console.warn('[LiveKit] Native WebRTC module not available. Running voice in simulation mode:', e);
           setIsExpoGoFallback(true);
           setIsVoiceConnected(true);
           setIsConnecting(false);

@@ -4,11 +4,33 @@
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
 const STORAGE_KEY_SERVER_URL = '@ludo_server_url';
 
-// Default URL: on Android emulator 10.0.2.2 points to host machine, localhost on web/iOS
-const DEFAULT_SERVER_URL = Platform.OS === 'android' ? 'http://10.0.2.2:3000' : 'http://localhost:3000';
+export function getDefaultServerUrl() {
+  // 1. Auto-detect host IP from Expo Metro bundler
+  const hostUri =
+    Constants.expoConfig?.hostUri ||
+    Constants.manifest2?.extra?.expoClient?.hostUri ||
+    Constants.manifest?.debuggerHost ||
+    Constants.experienceUrl;
+
+  if (hostUri) {
+    const ip = String(hostUri).split(':')[0];
+    if (ip && ip !== 'localhost' && ip !== '127.0.0.1' && ip !== 'undefined') {
+      return `http://${ip}:3000`;
+    }
+  }
+
+  // 2. Physical Android Wi-Fi fallback (configured for user's network)
+  if (Platform.OS === 'android') {
+    return 'http://192.168.31.221:3000';
+  }
+
+  // 3. Web or desktop
+  return 'http://localhost:3000';
+}
 
 let cachedServerUrl = null;
 
@@ -16,14 +38,17 @@ export async function getServerUrl() {
   if (cachedServerUrl) return cachedServerUrl;
   try {
     const saved = await AsyncStorage.getItem(STORAGE_KEY_SERVER_URL);
-    if (saved) {
+    if (saved && !saved.includes('10.0.2.2')) {
       cachedServerUrl = saved;
       return saved;
     }
   } catch (e) {
     // ignore
   }
-  return DEFAULT_SERVER_URL;
+
+  const defaultUrl = getDefaultServerUrl();
+  cachedServerUrl = defaultUrl;
+  return defaultUrl;
 }
 
 export async function setServerUrl(url) {

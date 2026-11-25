@@ -29,12 +29,15 @@ export default function VoiceControls({
     .map((id) => players.find((p) => p.id === id)?.name)
     .filter(Boolean);
 
-  const speakerText =
-    activeSpeakerNames.length > 0
-      ? `${activeSpeakerNames.join(', ')} is speaking...`
-      : isMuted
-      ? 'Mic Muted • Tap mic to talk'
-      : 'Microphone LIVE • You can speak';
+  const speakerText = isExpoGoFallback
+    ? isMuted
+      ? 'Voice: Muted (Expo Go Preview)'
+      : 'Voice: Active (Expo Go Preview)'
+    : activeSpeakerNames.length > 0
+    ? `${activeSpeakerNames.join(', ')} is speaking...`
+    : isMuted
+    ? 'Mic Muted • Tap mic to talk'
+    : 'Microphone LIVE • You can speak';
 
   return (
     <View style={styles.container}>

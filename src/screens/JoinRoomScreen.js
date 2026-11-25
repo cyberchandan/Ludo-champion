@@ -2,7 +2,7 @@
  * Ludo Champion - Join Private Room Screen
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -10,11 +10,13 @@ import {
   TouchableOpacity,
   TextInput,
   ActivityIndicator,
+  Modal,
+  Alert,
   SafeAreaView,
   StatusBar,
 } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { apiJoinRoom } from '../services/api';
+import { apiJoinRoom, getServerUrl, setServerUrl } from '../services/api';
 import { getPlayerProfile } from '../utils/playerProfile';
 import { soundManager } from '../utils/soundManager';
 
@@ -22,6 +24,27 @@ export default function JoinRoomScreen({ onJoinedRoom, onBack }) {
   const [code, setCode] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+
+  const [isServerModalVisible, setIsServerModalVisible] = useState(false);
+  const [currentServerUrl, setCurrentServerUrl] = useState('');
+  const [tempServerUrl, setTempServerUrl] = useState('');
+
+  useEffect(() => {
+    getServerUrl().then((url) => {
+      setCurrentServerUrl(url);
+      setTempServerUrl(url);
+    });
+  }, []);
+
+  const handleSaveServerUrl = async () => {
+    if (tempServerUrl.trim()) {
+      soundManager.playClick();
+      await setServerUrl(tempServerUrl.trim());
+      setCurrentServerUrl(tempServerUrl.trim());
+      setIsServerModalVisible(false);
+      Alert.alert('Server Updated', `Connecting to ${tempServerUrl.trim()}`);
+    }
+  };
 
   const handleTextChange = (text) => {
     // Only allow alphanumeric uppercase up to 6 characters
@@ -75,7 +98,16 @@ export default function JoinRoomScreen({ onJoinedRoom, onBack }) {
           <MaterialCommunityIcons name="arrow-left" size={24} color="#FFFFFF" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>JOIN PRIVATE ROOM</Text>
-        <View style={{ width: 40 }} />
+        <TouchableOpacity
+          onPress={() => {
+            soundManager.playClick();
+            setIsServerModalVisible(true);
+          }}
+          style={styles.serverSettingsBtn}
+          accessibilityLabel="Server Connection Settings"
+        >
+          <MaterialCommunityIcons name="server-network" size={22} color="#38BDF8" />
+        </TouchableOpacity>
       </View>
 
       <View style={styles.content}>
@@ -129,6 +161,46 @@ export default function JoinRoomScreen({ onJoinedRoom, onBack }) {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Server IP Settings Modal */}
+      <Modal
+        visible={isServerModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIsServerModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Multiplayer Server IP</Text>
+            <Text style={styles.modalDesc}>
+              Enter the host computer's Wi-Fi IP address (e.g. http://192.168.31.221:3000):
+            </Text>
+            <TextInput
+              style={styles.serverInput}
+              value={tempServerUrl}
+              onChangeText={setTempServerUrl}
+              placeholder="http://192.168.31.221:3000"
+              placeholderTextColor="#64748B"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <View style={styles.modalButtonsRow}>
+              <TouchableOpacity
+                onPress={() => setIsServerModalVisible(false)}
+                style={styles.modalCancelBtn}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSaveServerUrl}
+                style={styles.modalSaveBtn}
+              >
+                <Text style={styles.modalSaveText}>Save & Connect</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -148,6 +220,14 @@ const styles = StyleSheet.create({
     borderBottomColor: '#1E293B',
   },
   backBtn: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#1E293B',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  serverSettingsBtn: {
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -252,5 +332,67 @@ const styles = StyleSheet.create({
     fontWeight: '900',
     fontSize: 14,
     letterSpacing: 0.5,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 24,
+  },
+  modalCard: {
+    width: '100%',
+    backgroundColor: '#1E293B',
+    borderRadius: 20,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  modalTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    marginBottom: 8,
+  },
+  modalDesc: {
+    fontSize: 12,
+    color: '#94A3B8',
+    marginBottom: 14,
+    lineHeight: 18,
+  },
+  serverInput: {
+    backgroundColor: '#0F172A',
+    borderRadius: 10,
+    padding: 12,
+    color: '#FFFFFF',
+    fontSize: 14,
+    borderWidth: 1,
+    borderColor: '#38BDF8',
+    marginBottom: 16,
+  },
+  modalButtonsRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 10,
+  },
+  modalCancelBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    backgroundColor: '#334155',
+  },
+  modalCancelText: {
+    color: '#CBD5E1',
+    fontWeight: '700',
+  },
+  modalSaveBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 10,
+    backgroundColor: '#2563EB',
+  },
+  modalSaveText: {
+    color: '#FFFFFF',
+    fontWeight: '800',
   },
 });
