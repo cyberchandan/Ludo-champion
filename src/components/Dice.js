@@ -52,6 +52,12 @@ export default function Dice({
   const trailOpacity = useRef(new Animated.Value(0)).current;
   const trailScale = useRef(new Animated.Value(0.5)).current;
 
+  const pipIntervalRef = useRef(null);
+  const onBounceImpactRef = useRef(onBounceImpact);
+  useEffect(() => {
+    onBounceImpactRef.current = onBounceImpact;
+  }, [onBounceImpact]);
+
   const [displayValue, setDisplayValue] = useState(value || 1);
   const theme = COLOR_THEMES[playerColor] || COLOR_THEMES.RED;
 
@@ -107,8 +113,14 @@ export default function Dice({
 
   // Sync display value and trigger Lucky 6 celebration
   useEffect(() => {
-    if (!isRolling && value) {
-      setDisplayValue(value);
+    if (!isRolling) {
+      if (pipIntervalRef.current) {
+        clearInterval(pipIntervalRef.current);
+        pipIntervalRef.current = null;
+      }
+      if (value) {
+        setDisplayValue(value);
+      }
 
       // Specular shine sweep across the settled face
       shineSweep.setValue(-size);
@@ -152,11 +164,18 @@ export default function Dice({
 
   // Dynamic Physical Board Rolling Physics
   useEffect(() => {
-    let pipInterval;
+    let timer1;
+    let timer2;
 
     if (isRolling) {
+      // Clear any prior interval
+      if (pipIntervalRef.current) {
+        clearInterval(pipIntervalRef.current);
+        pipIntervalRef.current = null;
+      }
+
       // 1. Rapid pip randomization during roll
-      pipInterval = setInterval(() => {
+      pipIntervalRef.current = setInterval(() => {
         setDisplayValue(Math.floor(Math.random() * 6) + 1);
       }, 50);
 
@@ -202,14 +221,14 @@ export default function Dice({
       ]).start();
 
       // Timed impact bounce sounds and haptic clicks
-      const timer1 = setTimeout(() => {
+      timer1 = setTimeout(() => {
         soundManager.playDiceBounce();
-        if (onBounceImpact) onBounceImpact();
+        if (onBounceImpactRef.current) onBounceImpactRef.current();
       }, 190);
 
-      const timer2 = setTimeout(() => {
+      timer2 = setTimeout(() => {
         soundManager.playDiceBounce();
-        if (onBounceImpact) onBounceImpact();
+        if (onBounceImpactRef.current) onBounceImpactRef.current();
       }, 340);
 
       // Full Multi-Stage Board Rolling Sequence
@@ -347,17 +366,26 @@ export default function Dice({
         trajX.setValue(0);
         trajY.setValue(0);
       });
-
-      return () => {
-        clearTimeout(timer1);
-        clearTimeout(timer2);
-      };
+    } else {
+      // When not rolling, immediately clear any active interval and lock value
+      if (pipIntervalRef.current) {
+        clearInterval(pipIntervalRef.current);
+        pipIntervalRef.current = null;
+      }
+      if (value) {
+        setDisplayValue(value);
+      }
     }
 
     return () => {
-      if (pipInterval) clearInterval(pipInterval);
+      if (pipIntervalRef.current) {
+        clearInterval(pipIntervalRef.current);
+        pipIntervalRef.current = null;
+      }
+      if (timer1) clearTimeout(timer1);
+      if (timer2) clearTimeout(timer2);
     };
-  }, [isRolling, boardSize, trajX, trajY, bounceScale, shadowScale, spinZ, spinX, spinY, trailOpacity, trailScale, onBounceImpact]);
+  }, [isRolling, boardSize, trajX, trajY, bounceScale, shadowScale, spinZ, spinX, spinY, trailOpacity, trailScale, value]);
 
   // Rotational interpolations
   const rotateZVal = spinZ.interpolate({
