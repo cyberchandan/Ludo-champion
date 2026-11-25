@@ -3,8 +3,8 @@
  * Scalable SVG 15x15 board with real-time interactive pawn rendering and collision stacking.
  */
 
-import React from 'react';
-import { View, StyleSheet, Dimensions } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, StyleSheet, Dimensions, Animated } from 'react-native';
 import Svg, { Rect, Path, Circle, G, Polygon } from 'react-native-svg';
 import {
   MAIN_TRACK,
@@ -13,8 +13,10 @@ import {
   PLAYER_START_OFFSETS,
   calculateTokenPosition,
 } from '../game/boardConfig';
-import { COLOR_THEMES, PLAYER_COLORS, STEP } from '../game/constants';
+import { COLOR_THEMES, PLAYER_COLORS, STEP, GAME_STATUS } from '../game/constants';
 import LudoToken from './LudoToken';
+import Dice from './Dice';
+import FireCaptureEffect from './FireCaptureEffect';
 
 // Golden Star SVG Path centered at (cx, cy) with radius r
 function renderStar(cx, cy, r, color = '#F59E0B') {
@@ -34,11 +36,64 @@ export default function LudoBoard({
   movingTokenInfo = null,
   onSelectToken,
   boardSize = null,
+  diceState = null,
+  captureEvent = null,
+  onClearCapture,
 }) {
   const windowWidth = Dimensions.get('window').width;
   const size = boardSize || Math.min(windowWidth - 24, 380);
   const cellSize = size / 15;
   const tokenSize = cellSize * 0.82;
+
+  // Center dice dimensions
+  const centerBoxSize = cellSize * 3;
+  const centerBoxLeft = cellSize * 6;
+  const centerBoxTop = cellSize * 6;
+  const boardDiceSize = Math.min(centerBoxSize * 0.76, 56);
+
+  // Dynamic board rumble / physical impact shake
+  const boardShakeX = useRef(new Animated.Value(0)).current;
+  const boardShakeY = useRef(new Animated.Value(0)).current;
+
+  const triggerBoardShake = (intensity = 2.5) => {
+    Animated.sequence([
+      Animated.timing(boardShakeX, { toValue: intensity, duration: 30, useNativeDriver: true }),
+      Animated.timing(boardShakeX, { toValue: -intensity, duration: 30, useNativeDriver: true }),
+      Animated.timing(boardShakeX, { toValue: intensity * 0.5, duration: 30, useNativeDriver: true }),
+      Animated.timing(boardShakeX, { toValue: 0, duration: 30, useNativeDriver: true }),
+    ]).start();
+
+    Animated.sequence([
+      Animated.timing(boardShakeY, { toValue: -intensity, duration: 30, useNativeDriver: true }),
+      Animated.timing(boardShakeY, { toValue: intensity, duration: 30, useNativeDriver: true }),
+      Animated.timing(boardShakeY, { toValue: 0, duration: 30, useNativeDriver: true }),
+    ]).start();
+  };
+
+  // Shake board with high intensity on token capture fire blast
+  useEffect(() => {
+    if (captureEvent) {
+      triggerBoardShake(5.0);
+    }
+  }, [captureEvent]);
+
+  // Dice appears on the board only for rolling or displaying rolled result
+  const showBoardDice =
+    diceState &&
+    (diceState.status === GAME_STATUS.WAITING_ROLL ||
+      diceState.isRolling ||
+      diceState.status === GAME_STATUS.WAITING_TOKEN_SELECT);
+
+  const diceScaleAnim = useRef(new Animated.Value(showBoardDice ? 1 : 0)).current;
+
+  useEffect(() => {
+    Animated.spring(diceScaleAnim, {
+      toValue: showBoardDice ? 1 : 0,
+      friction: 5,
+      tension: 65,
+      useNativeDriver: true,
+    }).start();
+  }, [showBoardDice, diceScaleAnim]);
 
   // Track safe cells mapping
   const safeCellKeys = new Set(
@@ -117,7 +172,19 @@ export default function LudoBoard({
   });
 
   return (
-    <View style={[styles.boardWrapper, { width: size, height: size }]}>
+    <Animated.View
+      style={[
+        styles.boardWrapper,
+        {
+          width: size,
+          height: size,
+          transform: [
+            { translateX: boardShakeX },
+            { translateY: boardShakeY },
+          ],
+        },
+      ]}
+    >
       {/* 1. Scalable SVG Board Base */}
       <Svg width={size} height={size} viewBox="0 0 15 15">
         {/* Background / Track grid */}
@@ -267,7 +334,11 @@ export default function LudoBoard({
         <Polygon points="9,6 7.5,7.5 9,9" fill={COLOR_THEMES.YELLOW.primary} />
         {/* Bottom triangle: Blue */}
         <Polygon points="6,9 7.5,7.5 9,9" fill={COLOR_THEMES.BLUE.primary} />
-        {/* Center Golden Circle */}
+
+        {/* Center Royal Arena Stadium Rings */}
+        <Circle cx="7.5" cy="7.5" r="1.38" fill="rgba(255, 255, 255, 0.16)" stroke="#FFD700" strokeWidth="0.08" strokeDasharray="0.2, 0.1" />
+        <Circle cx="7.5" cy="7.5" r="0.95" fill="rgba(255, 215, 0, 0.22)" stroke="#FFFFFF" strokeWidth="0.05" />
+        {/* Center Golden Medal */}
         <Circle cx="7.5" cy="7.5" r="0.65" fill="#FFD700" stroke="#FFFFFF" strokeWidth="0.08" />
       </Svg>
 
@@ -292,7 +363,46 @@ export default function LudoBoard({
           />
         </View>
       ))}
-    </View>
+
+      {/* 3. Center Game Board Dice Station (Tumbles dynamically within board bounds) */}
+      {showBoardDice && diceState && (
+        <Animated.View
+          style={[
+            styles.centerDiceContainer,
+            {
+              left: centerBoxLeft,
+              top: centerBoxTop,
+              width: centerBoxSize,
+              height: centerBoxSize,
+              transform: [{ scale: diceScaleAnim }],
+            },
+          ]}
+        >
+          <Dice
+            value={diceState.diceValue}
+            isRolling={diceState.isRolling}
+            disabled={diceState.disabled}
+            onRoll={diceState.onRoll}
+            playerColor={currentPlayer ? currentPlayer.color : 'RED'}
+            size={boardDiceSize}
+            boardSize={size}
+            onBounceImpact={() => triggerBoardShake(2.0)}
+            showBadge={diceState.status === GAME_STATUS.WAITING_ROLL && !diceState.isRolling}
+          />
+        </Animated.View>
+      )}
+
+      {/* 4. Fire Blast Knockout Effect Overlay */}
+      {captureEvent && (
+        <FireCaptureEffect
+          key={captureEvent.id}
+          x={captureEvent.col * cellSize}
+          y={captureEvent.row * cellSize}
+          cellSize={cellSize}
+          onComplete={onClearCapture}
+        />
+      )}
+    </Animated.View>
   );
 }
 
@@ -310,6 +420,13 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     position: 'relative',
     alignSelf: 'center',
+  },
+  centerDiceContainer: {
+    position: 'absolute',
+    justifyContent: 'center',
+    alignItems: 'center',
+    overflow: 'visible',
+    zIndex: 200,
   },
   tokenAbsolute: {
     position: 'absolute',

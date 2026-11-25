@@ -10,6 +10,7 @@ import {
   switchTurn as engineSwitchTurn,
   generateMovementPath,
 } from '../game/gameEngine';
+import { calculateTokenPosition } from '../game/boardConfig';
 import { GAME_STATUS, STEP } from '../game/constants';
 import { soundManager } from '../utils/soundManager';
 import { recordGameResult } from '../utils/storage';
@@ -18,6 +19,7 @@ export function useLudoGame(initialPlayerCount = 4, customOptions = {}) {
   const [gameState, setGameState] = useState(() => initializeGame(initialPlayerCount, customOptions));
   const [isRolling, setIsRolling] = useState(false);
   const [movingTokenInfo, setMovingTokenInfo] = useState(null); // { playerId, tokenId, currentPathStep }
+  const [captureEvent, setCaptureEvent] = useState(null); // { row, col, killerColor, capturedTokens, id }
   const isActionLocked = useRef(false);
 
   const currentPlayer = gameState.players[gameState.currentPlayerIndex];
@@ -41,6 +43,10 @@ export function useLudoGame(initialPlayerCount = 4, customOptions = {}) {
     setTimeout(() => {
       setGameState((prevState) => {
         const nextState = handleDiceRoll(prevState);
+
+        if (nextState.diceValue === 6) {
+          soundManager.playSix();
+        }
 
         // If turn was forfeited due to 3 sixes or no moves, release lock after a readable delay
         if (nextState.lastEvent?.type === 'NO_VALID_MOVES' || nextState.lastEvent?.type === 'THREE_SIXES_FORFEIT') {
@@ -91,11 +97,11 @@ export function useLudoGame(initialPlayerCount = 4, customOptions = {}) {
           tokenId,
           step: path[i].step,
         });
-        soundManager.playHop();
+        soundManager.playHop(i);
         await new Promise((resolve) => setTimeout(resolve, 80));
       }
     } else {
-      soundManager.playHop();
+      soundManager.playHop(0);
     }
 
     setMovingTokenInfo(null);
@@ -105,7 +111,17 @@ export function useLudoGame(initialPlayerCount = 4, customOptions = {}) {
       const nextState = handleTokenMove(prevState, tokenId);
 
       if (nextState.lastEvent?.type === 'TOKEN_CAPTURED') {
+        const capturePos = calculateTokenPosition(currentPlayer.color, toStep, tokenId);
+        setCaptureEvent({
+          row: capturePos.row,
+          col: capturePos.col,
+          killerColor: currentPlayer.color,
+          capturedTokens: nextState.lastEvent.capturedTokens,
+          id: Date.now(),
+        });
         soundManager.playCapture();
+      } else if (toStep === STEP.FINAL_HOME && nextState.lastEvent?.type !== 'GAME_OVER') {
+        soundManager.playHome();
       } else if (nextState.lastEvent?.type === 'GAME_OVER') {
         soundManager.playWin();
         if (nextState.winner) {
@@ -121,11 +137,16 @@ export function useLudoGame(initialPlayerCount = 4, customOptions = {}) {
     });
   }, [gameState, currentPlayer]);
 
+  const clearCaptureEvent = useCallback(() => {
+    setCaptureEvent(null);
+  }, []);
+
   // Restart game
   const onResetGame = useCallback((playerCount = initialPlayerCount, options = customOptions) => {
     isActionLocked.current = false;
     setIsRolling(false);
     setMovingTokenInfo(null);
+    setCaptureEvent(null);
     setGameState(initializeGame(playerCount, options));
   }, [initialPlayerCount, customOptions]);
 
@@ -134,6 +155,8 @@ export function useLudoGame(initialPlayerCount = 4, customOptions = {}) {
     currentPlayer,
     isRolling,
     movingTokenInfo,
+    captureEvent,
+    clearCaptureEvent,
     onRollDice,
     onSelectToken,
     onResetGame,

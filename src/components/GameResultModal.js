@@ -89,22 +89,24 @@ export default function GameResultModal({
 
           {/* Action Buttons */}
           <View style={styles.actions}>
-            <TouchableOpacity
-              activeOpacity={0.8}
-              onPress={onPlayAgain}
-              style={[styles.primaryBtn, { backgroundColor: winnerTheme.primary }]}
-            >
-              <MaterialCommunityIcons name="play-circle" size={24} color="#FFFFFF" />
-              <Text style={styles.primaryBtnText}>PLAY AGAIN</Text>
-            </TouchableOpacity>
+            {onPlayAgain && (
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={onPlayAgain}
+                style={[styles.primaryBtn, { backgroundColor: winnerTheme.primary }]}
+              >
+                <MaterialCommunityIcons name="play-circle" size={24} color="#FFFFFF" />
+                <Text style={styles.primaryBtnText}>PLAY AGAIN</Text>
+              </TouchableOpacity>
+            )}
 
             <TouchableOpacity
               activeOpacity={0.8}
               onPress={onMainMenu}
-              style={styles.secondaryBtn}
+              style={[styles.secondaryBtn, !onPlayAgain && { backgroundColor: winnerTheme.primary, borderWidth: 0 }]}
             >
-              <MaterialCommunityIcons name="home" size={20} color="#4B5563" />
-              <Text style={styles.secondaryBtnText}>MAIN MENU</Text>
+              <MaterialCommunityIcons name="home" size={20} color={!onPlayAgain ? "#FFFFFF" : "#4B5563"} />
+              <Text style={[styles.secondaryBtnText, !onPlayAgain && { color: "#FFFFFF", fontWeight: '900' }]}>MAIN MENU</Text>
             </TouchableOpacity>
           </View>
         </Animated.View>

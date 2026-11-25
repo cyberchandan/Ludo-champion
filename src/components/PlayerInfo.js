@@ -13,6 +13,9 @@ export default function PlayerInfo({
   isCurrentTurn = false,
   showHomeCount = true,
   diceComponent = null,
+  rolledValue = null,
+  isSpeaking = false,
+  isVoiceMuted = false,
 }) {
   if (!player) return null;
 
@@ -59,12 +62,25 @@ export default function PlayerInfo({
     >
       <View style={styles.leftSection}>
         {/* Color Badge / Avatar */}
-        <View style={[styles.avatar, { backgroundColor: theme.primary }]}>
-          <MaterialCommunityIcons
-            name={player.hasFinished ? 'trophy' : 'account'}
-            size={18}
-            color="#FFFFFF"
-          />
+        <View style={styles.avatarWrapper}>
+          <View
+            style={[
+              styles.avatar,
+              { backgroundColor: theme.primary },
+              isSpeaking && styles.avatarSpeaking,
+            ]}
+          >
+            <MaterialCommunityIcons
+              name={player.hasFinished ? 'trophy' : 'account'}
+              size={18}
+              color="#FFFFFF"
+            />
+          </View>
+          {isVoiceMuted && (
+            <View style={styles.micMutedBadge}>
+              <MaterialCommunityIcons name="microphone-off" size={9} color="#FFFFFF" />
+            </View>
+          )}
         </View>
 
         <View style={styles.nameBlock}>
@@ -80,10 +96,19 @@ export default function PlayerInfo({
         </View>
       </View>
 
-      {/* Right side: Dice or Active Turn Pill */}
+      {/* Right side: Dice, Rolled Value Badge, or Active Turn Pill */}
       <View style={styles.rightSection}>
         {diceComponent ? (
           diceComponent
+        ) : rolledValue ? (
+          <View style={[styles.rolledPill, { borderColor: theme.primary }]}>
+            <MaterialCommunityIcons
+              name={`dice-${Math.min(6, Math.max(1, rolledValue))}`}
+              size={16}
+              color={theme.primary}
+            />
+            <Text style={[styles.rolledPillText, { color: theme.primary }]}>{rolledValue}</Text>
+          </View>
         ) : isCurrentTurn ? (
           <View style={[styles.turnPill, { backgroundColor: theme.primary }]}>
             <Text style={styles.turnPillText}>TURN</Text>
@@ -123,6 +148,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
   },
+  avatarWrapper: {
+    position: 'relative',
+  },
   avatar: {
     width: 32,
     height: 32,
@@ -130,6 +158,28 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     elevation: 2,
+  },
+  avatarSpeaking: {
+    borderWidth: 2.5,
+    borderColor: '#10B981',
+    shadowColor: '#10B981',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.8,
+    shadowRadius: 5,
+    elevation: 5,
+  },
+  micMutedBadge: {
+    position: 'absolute',
+    bottom: -2,
+    right: -2,
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    backgroundColor: '#EF4444',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
   },
   nameBlock: {
     justifyContent: 'center',
@@ -166,5 +216,24 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: '900',
     letterSpacing: 0.5,
+  },
+  rolledPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1.5,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+    borderRadius: 10,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+  },
+  rolledPillText: {
+    fontSize: 11,
+    fontWeight: '900',
   },
 });

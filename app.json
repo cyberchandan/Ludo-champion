@@ -21,7 +21,13 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "permissions": [
-        "VIBRATE"
+        "VIBRATE",
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS",
+        "INTERNET",
+        "ACCESS_NETWORK_STATE",
+        "BLUETOOTH",
+        "BLUETOOTH_CONNECT"
       ]
     },
     "web": {
@@ -31,12 +37,8 @@
     "plugins": [
       "expo-router",
       "expo-font",
-      [
-        "expo-av",
-        {
-          "microphonePermission": false
-        }
-      ]
+      "expo-audio",
+      "expo-asset"
     ]
   }
 }

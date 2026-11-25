@@ -71,11 +71,11 @@ export default function SplashScreen({ onFinish }) {
         {/* Title & Tagline */}
         <Text style={styles.gameTitle}>LUDO</Text>
         <Text style={styles.gameSubtitle}>CHAMPION</Text>
-        <Text style={styles.tagline}>The Ultimate Royal Board Experience</Text>
+        <Text style={styles.tagline}>The Ultimate Royal Board Experience by chandan</Text>
 
         {/* Color Badges Row */}
         <View style={styles.dotsRow}>
-          <View style={[styles.dot, { backgroundColor: COLOR_THEMES.RED.primary }]} />
+          <View style={[styles.dot, { backgroundColor: COLOR_THEMES.RED.primary }]} /> 
           <View style={[styles.dot, { backgroundColor: COLOR_THEMES.GREEN.primary }]} />
           <View style={[styles.dot, { backgroundColor: COLOR_THEMES.YELLOW.primary }]} />
           <View style={[styles.dot, { backgroundColor: COLOR_THEMES.BLUE.primary }]} />

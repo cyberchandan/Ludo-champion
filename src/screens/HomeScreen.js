@@ -22,6 +22,7 @@ const { width } = Dimensions.get('window');
 export default function HomeScreen({
   onPlayOffline,
   onPlayComputer,
+  onPlayFriends,
   onHowToPlay,
   onSettings,
 }) {
@@ -65,6 +66,28 @@ export default function HomeScreen({
 
       {/* Main Game Menu Cards */}
       <View style={styles.menuSection}>
+        {/* Play with Friends (Online Multiplayer + Voice) */}
+        <TouchableOpacity
+          activeOpacity={0.85}
+          onPress={() => handlePress(onPlayFriends)}
+          style={[styles.menuCard, styles.onlineCard]}
+        >
+          <View style={[styles.menuIconContainer, { backgroundColor: '#6D28D9' }]}>
+            <MaterialCommunityIcons name="earth" size={30} color="#FFFFFF" />
+          </View>
+          <View style={styles.menuTextContainer}>
+            <View style={styles.onlineBadgeRow}>
+              <Text style={styles.menuCardTitle}>PLAY WITH FRIENDS</Text>
+              <View style={styles.voiceBadge}>
+                <MaterialCommunityIcons name="microphone" size={11} color="#FFFFFF" />
+                <Text style={styles.voiceBadgeText}>VOICE</Text>
+              </View>
+            </View>
+            <Text style={styles.menuCardSubtitle}>Private Room & Live Voice Chat</Text>
+          </View>
+          <MaterialCommunityIcons name="chevron-right" size={28} color="#FFFFFF" />
+        </TouchableOpacity>
+
         {/* Play Offline Pass & Play */}
         <TouchableOpacity
           activeOpacity={0.85}
@@ -244,6 +267,29 @@ const styles = StyleSheet.create({
   },
   playCard: {
     backgroundColor: '#2563EB',
+  },
+  onlineCard: {
+    backgroundColor: '#7C3AED',
+  },
+  onlineBadgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  voiceBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#10B981',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+    gap: 3,
+  },
+  voiceBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0.5,
   },
   computerCard: {
     backgroundColor: '#0F766E',

@@ -17,9 +17,19 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { loadSettings, saveSettings, resetStatistics } from '../utils/storage';
 import { soundManager } from '../utils/soundManager';
 
+const VOLUME_STEPS = [
+  { label: '0%', value: 0.0 },
+  { label: '25%', value: 0.25 },
+  { label: '50%', value: 0.5 },
+  { label: '75%', value: 0.75 },
+  { label: '100%', value: 1.0 },
+];
+
 export default function SettingsScreen({ onBack }) {
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [musicEnabled, setMusicEnabled] = useState(true);
+  const [musicEnabled, setMusicEnabled] = useState(false);
+  const [soundVolume, setSoundVolume] = useState(1.0);
+  const [musicVolume, setMusicVolume] = useState(0.5);
   const [vibrationEnabled, setVibrationEnabled] = useState(true);
   const [threeSixesRule, setThreeSixesRule] = useState(true);
 
@@ -27,7 +37,9 @@ export default function SettingsScreen({ onBack }) {
     loadSettings().then((s) => {
       if (s) {
         setSoundEnabled(s.soundEnabled !== false);
-        setMusicEnabled(s.musicEnabled !== false);
+        setMusicEnabled(s.musicEnabled === true);
+        setSoundVolume(s.soundVolume !== undefined ? Number(s.soundVolume) : 1.0);
+        setMusicVolume(s.musicVolume !== undefined ? Number(s.musicVolume) : 0.5);
         setVibrationEnabled(s.vibrationEnabled !== false);
         setThreeSixesRule(s.threeSixesRule !== false);
       }
@@ -44,7 +56,29 @@ export default function SettingsScreen({ onBack }) {
   const handleToggleMusic = (val) => {
     setMusicEnabled(val);
     saveSettings({ musicEnabled: val });
+    soundManager.updateSettings({ musicEnabled: val });
     if (soundEnabled) soundManager.playClick();
+  };
+
+  const handleChangeSoundVolume = (vol) => {
+    setSoundVolume(vol);
+    const shouldEnable = vol > 0;
+    if (shouldEnable !== soundEnabled) {
+      setSoundEnabled(shouldEnable);
+    }
+    saveSettings({ soundVolume: vol, soundEnabled: shouldEnable });
+    soundManager.updateSettings({ soundVolume: vol, soundEnabled: shouldEnable });
+    soundManager.playRoll();
+  };
+
+  const handleChangeMusicVolume = (vol) => {
+    setMusicVolume(vol);
+    const shouldEnable = vol > 0;
+    if (shouldEnable !== musicEnabled) {
+      setMusicEnabled(shouldEnable);
+    }
+    saveSettings({ musicVolume: vol, musicEnabled: shouldEnable });
+    soundManager.updateSettings({ musicVolume: vol, musicEnabled: shouldEnable });
   };
 
   const handleToggleVibration = (val) => {
@@ -103,12 +137,15 @@ export default function SettingsScreen({ onBack }) {
         <View style={styles.sectionCard}>
           <Text style={styles.sectionTitle}>AUDIO & FEEDBACK</Text>
 
+          {/* Sound Effects */}
           <View style={styles.settingRow}>
             <View style={styles.settingInfo}>
               <MaterialCommunityIcons name="volume-high" size={22} color="#FACC15" />
               <View>
                 <Text style={styles.settingLabel}>Sound Effects</Text>
-                <Text style={styles.settingDesc}>Dice rolls, token movement, captures</Text>
+                <Text style={styles.settingDesc}>
+                  {soundEnabled ? `Active (${Math.round(soundVolume * 100)}%)` : 'Muted'}
+                </Text>
               </View>
             </View>
             <Switch
@@ -119,14 +156,42 @@ export default function SettingsScreen({ onBack }) {
             />
           </View>
 
+          {/* Sound Effects Volume Stepper */}
+          <View style={[styles.volumeRow, !soundEnabled && styles.disabledRow]}>
+            <Text style={styles.volumeLabel}>SFX Volume</Text>
+            <View style={styles.stepperContainer}>
+              {VOLUME_STEPS.map((step) => {
+                const isSelected = soundEnabled && Math.abs(soundVolume - step.value) < 0.12;
+                return (
+                  <TouchableOpacity
+                    key={`set-sfx-${step.label}`}
+                    disabled={!soundEnabled}
+                    onPress={() => handleChangeSoundVolume(step.value)}
+                    style={[
+                      styles.stepButton,
+                      isSelected && styles.stepButtonActiveSfx,
+                    ]}
+                  >
+                    <Text style={[styles.stepText, isSelected && styles.stepTextActive]}>
+                      {step.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+
           <View style={styles.divider} />
 
+          {/* Background Music */}
           <View style={styles.settingRow}>
             <View style={styles.settingInfo}>
               <MaterialCommunityIcons name="music" size={22} color="#10B981" />
               <View>
                 <Text style={styles.settingLabel}>Background Music</Text>
-                <Text style={styles.settingDesc}>Ambient royal theme music</Text>
+                <Text style={styles.settingDesc}>
+                  {musicEnabled ? `Playing (${Math.round(musicVolume * 100)}%)` : 'Muted'}
+                </Text>
               </View>
             </View>
             <Switch
@@ -135,6 +200,31 @@ export default function SettingsScreen({ onBack }) {
               trackColor={{ false: '#334155', true: '#10B981' }}
               thumbColor={musicEnabled ? '#0F172A' : '#94A3B8'}
             />
+          </View>
+
+          {/* Background Music Volume Stepper */}
+          <View style={[styles.volumeRow, !musicEnabled && styles.disabledRow]}>
+            <Text style={styles.volumeLabel}>Music Volume</Text>
+            <View style={styles.stepperContainer}>
+              {VOLUME_STEPS.map((step) => {
+                const isSelected = musicEnabled && Math.abs(musicVolume - step.value) < 0.12;
+                return (
+                  <TouchableOpacity
+                    key={`set-bgm-${step.label}`}
+                    disabled={!musicEnabled}
+                    onPress={() => handleChangeMusicVolume(step.value)}
+                    style={[
+                      styles.stepButton,
+                      isSelected && styles.stepButtonActiveMusic,
+                    ]}
+                  >
+                    <Text style={[styles.stepText, isSelected && styles.stepTextActive]}>
+                      {step.label}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
 
           <View style={styles.divider} />
@@ -325,5 +415,49 @@ const styles = StyleSheet.create({
     color: '#64748B',
     lineHeight: 16,
     marginTop: 10,
+  },
+  volumeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+    paddingLeft: 34,
+  },
+  volumeLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#94A3B8',
+  },
+  stepperContainer: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  stepButton: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+    backgroundColor: '#0F172A',
+    borderWidth: 1,
+    borderColor: '#334155',
+  },
+  stepButtonActiveSfx: {
+    backgroundColor: '#FACC15',
+    borderColor: '#EAB308',
+  },
+  stepButtonActiveMusic: {
+    backgroundColor: '#10B981',
+    borderColor: '#059669',
+  },
+  stepText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#94A3B8',
+  },
+  stepTextActive: {
+    color: '#0F172A',
+    fontWeight: '900',
+  },
+  disabledRow: {
+    opacity: 0.35,
   },
 });

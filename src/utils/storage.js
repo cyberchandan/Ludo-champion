@@ -12,7 +12,9 @@ const STORAGE_KEYS = {
 
 export const DEFAULT_SETTINGS = {
   soundEnabled: true,
-  musicEnabled: true,
+  musicEnabled: false, // Default to false: no background music on start, only sound effects
+  soundVolume: 1.0,
+  musicVolume: 0.5,
   vibrationEnabled: true,
   threeSixesRule: true,
   theme: 'classic',
@@ -52,7 +54,10 @@ export async function loadSettings() {
  */
 export async function saveSettings(settings) {
   try {
-    await AsyncStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+    const current = await loadSettings();
+    const updated = { ...current, ...settings };
+    await AsyncStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(updated));
+    return updated;
   } catch (error) {
     console.error('Failed to save settings:', error);
   }

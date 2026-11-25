@@ -15,6 +15,10 @@ export default function HomeRoute() {
     router.push({ pathname: '/setup', params: { vsComputer: 'true' } });
   };
 
+  const handlePlayFriends = () => {
+    router.push('/online');
+  };
+
   const handleHowToPlay = () => {
     router.push('/how-to-play');
   };
@@ -27,6 +31,7 @@ export default function HomeRoute() {
     <HomeScreen
       onPlayOffline={handlePlayOffline}
       onPlayComputer={handlePlayComputer}
+      onPlayFriends={handlePlayFriends}
       onHowToPlay={handleHowToPlay}
       onSettings={handleSettings}
     />

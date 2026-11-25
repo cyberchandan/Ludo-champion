@@ -33,6 +33,10 @@ export default function RootLayout() {
         <Stack.Screen name="game" />
         <Stack.Screen name="how-to-play" />
         <Stack.Screen name="settings" />
+        <Stack.Screen name="online/index" />
+        <Stack.Screen name="online/create" />
+        <Stack.Screen name="online/join" />
+        <Stack.Screen name="online/waiting-room" />
       </Stack>
     </View>
   );

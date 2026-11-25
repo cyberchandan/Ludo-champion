@@ -12,7 +12,10 @@ export default function GameControls({
   currentPlayer,
   eventMessage,
   soundEnabled = true,
+  musicEnabled = true,
   onToggleSound,
+  onToggleMusic,
+  onOpenAudioModal,
   onResetGame,
   onExitToMenu,
 }) {
@@ -49,7 +52,7 @@ export default function GameControls({
           style={styles.iconBtn}
           accessibilityLabel="Exit to Menu"
         >
-          <MaterialCommunityIcons name="arrow-left" size={22} color="#FFFFFF" />
+          <MaterialCommunityIcons name="arrow-left" size={20} color="#FFFFFF" />
         </TouchableOpacity>
 
         {/* Live Game Status Banner */}
@@ -61,24 +64,58 @@ export default function GameControls({
         </View>
 
         <View style={styles.rightActions}>
+          {/* Background Music Quick Mute / Unmute */}
+          {onToggleMusic && (
+            <TouchableOpacity
+              onPress={onToggleMusic}
+              style={[
+                styles.iconBtn,
+                !musicEnabled && styles.iconBtnMuted,
+              ]}
+              accessibilityLabel={musicEnabled ? 'Mute Background Music' : 'Unmute Background Music'}
+            >
+              <MaterialCommunityIcons
+                name={musicEnabled ? 'music' : 'music-off'}
+                size={18}
+                color={musicEnabled ? '#10B981' : '#94A3B8'}
+              />
+            </TouchableOpacity>
+          )}
+
+          {/* Sound Effects Quick Mute / Unmute */}
           <TouchableOpacity
             onPress={onToggleSound}
-            style={styles.iconBtn}
-            accessibilityLabel="Toggle Sound"
+            style={[
+              styles.iconBtn,
+              !soundEnabled && styles.iconBtnMuted,
+            ]}
+            accessibilityLabel={soundEnabled ? 'Mute Sound Effects' : 'Unmute Sound Effects'}
           >
             <MaterialCommunityIcons
               name={soundEnabled ? 'volume-high' : 'volume-off'}
-              size={22}
-              color={soundEnabled ? '#FACC15' : '#9CA3AF'}
+              size={18}
+              color={soundEnabled ? '#FACC15' : '#94A3B8'}
             />
           </TouchableOpacity>
 
+          {/* Detailed Audio Settings Modal Button */}
+          {onOpenAudioModal && (
+            <TouchableOpacity
+              onPress={onOpenAudioModal}
+              style={styles.iconBtn}
+              accessibilityLabel="Audio & Volume Settings"
+            >
+              <MaterialCommunityIcons name="tune-vertical" size={18} color="#38BDF8" />
+            </TouchableOpacity>
+          )}
+
+          {/* Restart Game Button */}
           <TouchableOpacity
             onPress={handleResetPress}
             style={styles.iconBtn}
             accessibilityLabel="Restart Game"
           >
-            <MaterialCommunityIcons name="restart" size={22} color="#FFFFFF" />
+            <MaterialCommunityIcons name="restart" size={18} color="#FFFFFF" />
           </TouchableOpacity>
         </View>
       </View>
@@ -88,43 +125,47 @@ export default function GameControls({
 
 const styles = StyleSheet.create({
   container: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    gap: 8,
+    gap: 6,
   },
   iconBtn: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     backgroundColor: 'rgba(255, 255, 255, 0.15)',
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  iconBtnMuted: {
+    backgroundColor: 'rgba(255, 255, 255, 0.07)',
   },
   statusBanner: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 20,
+    paddingVertical: 5,
+    paddingHorizontal: 10,
+    borderRadius: 18,
     borderWidth: 2,
     elevation: 3,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.15,
     shadowRadius: 3,
-    gap: 8,
+    gap: 6,
+    minWidth: 100,
   },
   colorDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
+    width: 9,
+    height: 9,
+    borderRadius: 4.5,
   },
   bannerText: {
     fontSize: 12,
@@ -134,6 +175,7 @@ const styles = StyleSheet.create({
   },
   rightActions: {
     flexDirection: 'row',
-    gap: 8,
+    alignItems: 'center',
+    gap: 5,
   },
 });
