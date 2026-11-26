@@ -5,6 +5,7 @@
 
 const RoomManager = require('../services/roomManager');
 const { handleServerDiceRoll, handleServerTokenMove } = require('../services/gameEngine');
+const voiceStore = require('../services/voiceStore');
 
 function setupGameSocket(io) {
   io.on('connection', (socket) => {
@@ -204,6 +205,89 @@ function setupGameSocket(io) {
           });
         }
       } catch (err) {
+        if (callback) callback({ success: false, error: err.message });
+      }
+    });
+
+    // Real-Time WebRTC P2P Voice Signaling (Offer, Answer, ICE Candidates)
+    socket.on('webrtc-signal', async ({ roomCode, targetPlayerId, signal }) => {
+      const cleanCode = (roomCode || socket.roomCode)?.toUpperCase().trim();
+      if (!cleanCode) return;
+
+      if (targetPlayerId) {
+        const room = await RoomManager.getRoom(cleanCode);
+        const targetPlayer = room?.players?.find((p) => p.id === targetPlayerId);
+        if (targetPlayer?.socketId) {
+          io.to(targetPlayer.socketId).emit('webrtc-signal-received', {
+            fromPlayerId: socket.playerId,
+            signal,
+          });
+          return;
+        }
+      }
+
+      socket.to(cleanCode).emit('webrtc-signal-received', {
+        fromPlayerId: socket.playerId,
+        signal,
+      });
+    });
+
+    // Voice Talk: Speaking status update (start speaking)
+    socket.on('voice-speaking-start', ({ roomCode, playerId, playerName }) => {
+      const cleanCode = (roomCode || socket.roomCode)?.toUpperCase().trim();
+      if (cleanCode) {
+        socket.to(cleanCode).emit('voice-speaking-update', {
+          playerId: playerId || socket.playerId,
+          playerName,
+          isSpeaking: true,
+        });
+      }
+    });
+
+    // Voice Talk: Speaking status update (stop speaking)
+    socket.on('voice-speaking-stop', ({ roomCode, playerId, playerName }) => {
+      const cleanCode = (roomCode || socket.roomCode)?.toUpperCase().trim();
+      if (cleanCode) {
+        socket.to(cleanCode).emit('voice-speaking-update', {
+          playerId: playerId || socket.playerId,
+          playerName,
+          isSpeaking: false,
+        });
+      }
+    });
+
+    // Voice Talk: Stream/Broadcast audio clip to other room participants
+    socket.on('voice-audio', async ({ roomCode, playerId, playerName, audioData, mimeType }, callback) => {
+      try {
+        const cleanCode = (roomCode || socket.roomCode)?.toUpperCase().trim();
+        if (!cleanCode || !audioData) {
+          if (callback) callback({ success: false, error: 'Invalid voice payload' });
+          return;
+        }
+
+        const audioId = `${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+        let base64String = audioData;
+        if (base64String.includes('base64,')) {
+          base64String = base64String.split('base64,')[1];
+        }
+
+        const buffer = Buffer.from(base64String, 'base64');
+        const resolvedMime = mimeType || 'audio/m4a';
+        voiceStore.saveAudio(audioId, buffer, resolvedMime);
+
+        // Broadcast to other players in the room
+        socket.to(cleanCode).emit('voice-audio-received', {
+          audioId,
+          playerId: playerId || socket.playerId,
+          playerName: playerName || 'Player',
+          audioUrl: `/api/voice/stream/${audioId}`,
+          audioData,
+          mimeType: resolvedMime,
+        });
+
+        if (callback) callback({ success: true, audioId, audioUrl: `/api/voice/stream/${audioId}` });
+      } catch (err) {
+        console.error('[Socket] voice-audio error:', err);
         if (callback) callback({ success: false, error: err.message });
       }
     });

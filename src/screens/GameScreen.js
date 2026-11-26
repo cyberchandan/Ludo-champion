@@ -254,13 +254,15 @@ export default function GameScreen({
           isVoiceConnected={voice.isVoiceConnected}
           isConnecting={voice.isConnecting}
           isMuted={voice.isMuted}
+          isRecording={voice.isRecording}
           isSpeakerOn={voice.isSpeakerOn}
           speakingPlayers={voice.speakingPlayers}
           players={gameState.players}
-          isExpoGoFallback={voice.isExpoGoFallback}
           onToggleMic={voice.toggleMicrophone}
           onToggleSpeaker={voice.toggleSpeaker}
           onLeaveVoice={voice.leaveVoice}
+          startTalking={voice.startTalking}
+          stopTalking={voice.stopTalking}
         />
       )}
 

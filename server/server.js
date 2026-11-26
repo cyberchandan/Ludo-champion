@@ -14,7 +14,8 @@ const server = http.createServer(app);
 
 // Middlewares
 app.use(cors({ origin: '*' }));
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // API Routes
 app.use('/api/rooms', roomRoutes);
@@ -37,7 +38,10 @@ const io = new Server(server, {
   },
   pingTimeout: 30000,
   pingInterval: 10000,
+  maxHttpBufferSize: 5e7, // 50MB for audio bursts
 });
+
+app.set('io', io);
 
 setupGameSocket(io);
 

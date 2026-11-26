@@ -23,6 +23,8 @@ import { apiGetRoom, apiStartGame } from '../services/api';
 import { getPlayerProfile } from '../utils/playerProfile';
 import { COLOR_THEMES } from '../game/constants';
 import { soundManager } from '../utils/soundManager';
+import { useLiveKitVoice } from '../hooks/useLiveKitVoice';
+import VoiceControls from '../components/VoiceControls';
 
 const TOTAL_SLOTS = 4;
 
@@ -36,6 +38,9 @@ export default function WaitingRoomScreen({
   const [copied, setCopied] = useState(false);
   const [starting, setStarting] = useState(false);
   const socketRef = useRef(null);
+
+  // Real-time Voice Chat in Waiting Lobby
+  const voice = useLiveKitVoice(roomCode, true);
 
   useEffect(() => {
     let isMounted = true;
@@ -84,6 +89,7 @@ export default function WaitingRoomScreen({
       // Listen for host starting the game
       socket.on('game-started', ({ room: updatedRoom, gameState }) => {
         if (isMounted && onGameStarted) {
+          voice.leaveVoice();
           onGameStarted(updatedRoom, gameState);
         }
       });
@@ -161,6 +167,7 @@ export default function WaitingRoomScreen({
           style: 'destructive',
           onPress: () => {
             soundManager.playClick();
+            voice.leaveVoice();
             onLeaveRoom();
           },
         },
@@ -211,6 +218,21 @@ export default function WaitingRoomScreen({
           </View>
         </View>
 
+        {/* Real-time Voice Chat Controls */}
+        <VoiceControls
+          isVoiceConnected={voice.isVoiceConnected}
+          isConnecting={voice.isConnecting}
+          isMuted={voice.isMuted}
+          isRecording={voice.isRecording}
+          isSpeakerOn={voice.isSpeakerOn}
+          speakingPlayers={voice.speakingPlayers}
+          players={players}
+          onToggleMic={voice.toggleMicrophone}
+          onToggleSpeaker={voice.toggleSpeaker}
+          startTalking={voice.startTalking}
+          stopTalking={voice.stopTalking}
+        />
+
         {/* Players Section Header */}
         <View style={styles.sectionHeaderRow}>
           <Text style={styles.sectionTitle}>PLAYERS IN LOBBY</Text>
@@ -224,12 +246,24 @@ export default function WaitingRoomScreen({
           {slots.map((p, index) => {
             if (p) {
               const theme = COLOR_THEMES[p.color] || COLOR_THEMES.RED;
+              const isSpeaking = voice.speakingPlayers?.includes(p.id);
+
               return (
                 <View
                   key={p.id || index}
-                  style={[styles.playerSlot, { borderColor: theme.primary }]}
+                  style={[
+                    styles.playerSlot,
+                    { borderColor: isSpeaking ? '#10B981' : theme.primary },
+                    isSpeaking && styles.playerSlotSpeaking,
+                  ]}
                 >
-                  <View style={[styles.avatarCircle, { backgroundColor: theme.primary }]}>
+                  <View
+                    style={[
+                      styles.avatarCircle,
+                      { backgroundColor: theme.primary },
+                      isSpeaking && styles.avatarCircleSpeaking,
+                    ]}
+                  >
                     <MaterialCommunityIcons
                       name={p.isHost ? 'crown' : 'account'}
                       size={24}
@@ -245,6 +279,12 @@ export default function WaitingRoomScreen({
                       {p.isHost && (
                         <View style={styles.hostBadge}>
                           <Text style={styles.hostBadgeText}>HOST</Text>
+                        </View>
+                      )}
+                      {isSpeaking && (
+                        <View style={styles.speakingBadge}>
+                          <MaterialCommunityIcons name="volume-high" size={12} color="#FFFFFF" />
+                          <Text style={styles.speakingBadgeText}>TALKING</Text>
                         </View>
                       )}
                     </View>
@@ -462,6 +502,31 @@ const styles = StyleSheet.create({
     fontSize: 9,
     fontWeight: '900',
     color: '#0F172A',
+  },
+  speakingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+    backgroundColor: '#10B981',
+    paddingVertical: 2,
+    paddingHorizontal: 6,
+    borderRadius: 6,
+  },
+  speakingBadgeText: {
+    fontSize: 9,
+    fontWeight: '900',
+    color: '#FFFFFF',
+    letterSpacing: 0.5,
+  },
+  playerSlotSpeaking: {
+    backgroundColor: '#1E3A5F',
+    borderWidth: 2,
+    borderColor: '#10B981',
+  },
+  avatarCircleSpeaking: {
+    borderWidth: 2.5,
+    borderColor: '#10B981',
+    elevation: 6,
   },
   playerColorName: {
     fontSize: 12,

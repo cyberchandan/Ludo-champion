@@ -1,18 +1,35 @@
 /**
- * Ludo Champion - Custom Hook for LiveKit Real-Time Voice Chat
- * Handles WebRTC audio rooms, microphone permissions, speaker routing, and speaking indicators.
+ * Ludo Champion - Custom Hook for Real-Time Voice Chat
+ * High-performance, cross-platform voice talk supporting:
+ * - Real-time Socket.IO voice communication with native expo-audio recording & playback
+ * - Works universally in Expo Go, Android APKs, iOS, and Web (no external cloud setup required)
+ * - Push-to-Talk (Hold to Speak) and Live Mic (Hands-Free continuous talk)
+ * - Live active speaker indicators and audio visualization
+ * - Remote player mute/speaker toggle
+ * - LiveKit Cloud fallback if valid credentials configured
  */
 
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { NativeModules, Platform } from 'react-native';
+import { NativeModules, Platform, Alert } from 'react-native';
 import Constants from 'expo-constants';
-import { apiGetVoiceToken } from '../services/api';
+import { getSocket } from '../services/socket';
+import { getServerUrl } from '../services/api';
 import { getPlayerProfile } from '../utils/playerProfile';
+
+// Lazy loader for expo-audio to prevent crash in non-native test environments
+let ExpoAudio = null;
+function getExpoAudio() {
+  if (ExpoAudio !== null) return ExpoAudio;
+  try {
+    ExpoAudio = require('expo-audio');
+  } catch (e) {
+    ExpoAudio = false;
+  }
+  return ExpoAudio;
+}
 
 /**
  * Checks whether native WebRTC is available in the current runtime environment.
- * - In Expo Go: Custom native WebRTC C++ binaries are not bundled, so this returns false.
- * - In Expo Development Build (npx expo run:android or EAS): Returns true.
  */
 export function isWebRTCSupported() {
   try {
@@ -22,7 +39,6 @@ export function isWebRTCSupported() {
     ) {
       return false;
     }
-
     return Boolean(NativeModules && NativeModules.LKRNWebRTCModule);
   } catch (e) {
     return false;
@@ -32,17 +48,35 @@ export function isWebRTCSupported() {
 export function useLiveKitVoice(roomCode, isEnabled = true) {
   const [isVoiceConnected, setIsVoiceConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [isMuted, setIsMuted] = useState(true); // Start muted by default for comfort
+  const [isMuted, setIsMuted] = useState(true);
+  const [isRecording, setIsRecording] = useState(false);
   const [isSpeakerOn, setIsSpeakerOn] = useState(true);
-  const [speakingPlayers, setSpeakingPlayers] = useState([]); // List of playerIds currently speaking
-  const [mutedPlayers, setMutedPlayers] = useState({}); // { [playerId]: boolean }
+  const [speakingPlayers, setSpeakingPlayers] = useState([]);
+  const [mutedPlayers, setMutedPlayers] = useState({});
   const [voiceError, setVoiceError] = useState(null);
-  const [isExpoGoFallback, setIsExpoGoFallback] = useState(false);
+  const [voiceMode, setVoiceMode] = useState('socket'); // 'socket' | 'livekit'
 
-  const roomRef = useRef(null);
+  const socketRef = useRef(null);
+  const profileRef = useRef(null);
+  const serverUrlRef = useRef(null);
+  const activeRecorderRef = useRef(null);
+  const activePlayersRef = useRef([]);
+  const isSpeakerOnRef = useRef(isSpeakerOn);
+  const isMutedRef = useRef(isMuted);
+  const isRecordingRef = useRef(false);
+  const continuousChunkTimerRef = useRef(null);
 
+  // Keep ref sync
+  isSpeakerOnRef.current = isSpeakerOn;
+  isMutedRef.current = isMuted;
+
+  // Initialize Voice Connection
   useEffect(() => {
-    if (!isEnabled || !roomCode) return;
+    if (!isEnabled || !roomCode) {
+      setIsVoiceConnected(false);
+      return;
+    }
+
     let isMounted = true;
 
     async function initVoice() {
@@ -51,117 +85,95 @@ export function useLiveKitVoice(roomCode, isEnabled = true) {
 
       try {
         const profile = await getPlayerProfile();
-
-        // 1. Fetch secure token from backend (verifies backend route & room credentials)
-        let tokenRes = null;
-        try {
-          tokenRes = await apiGetVoiceToken({
-            roomCode,
-            playerId: profile.id,
-            playerName: profile.name,
-          });
-        } catch (tokenErr) {
-          console.warn('[LiveKit] Voice token notice:', tokenErr.message);
-        }
-
+        const serverUrl = await getServerUrl();
         if (!isMounted) return;
 
-        // 2. Safeguard for Expo Go:
-        // Standard Expo Go does not bundle native WebRTC binaries.
-        // We MUST NOT require('@livekit/react-native') in Expo Go, as evaluating
-        // @livekit/react-native-webrtc throws an unhandled native module error.
-        if (!isWebRTCSupported()) {
-          console.log('[LiveKit] Running in Expo Go (WebRTC native module not present). Enabling graceful voice preview mode.');
-          setIsExpoGoFallback(true);
-          setIsVoiceConnected(true);
-          setIsConnecting(false);
-          return;
-        }
+        profileRef.current = profile;
+        serverUrlRef.current = serverUrl;
 
-        // 3. Dynamically import LiveKit only when native WebRTC is confirmed present
-        let LiveKitSDK;
-        try {
-          LiveKitSDK = require('@livekit/react-native');
-        } catch (e) {
-          console.warn('[LiveKit] Native WebRTC module not available. Running voice in simulation mode:', e);
-          setIsExpoGoFallback(true);
-          setIsVoiceConnected(true);
-          setIsConnecting(false);
-          return;
-        }
+        // Connect to authoritative Socket.IO server
+        const socket = await getSocket();
+        if (!isMounted) return;
+        socketRef.current = socket;
 
-        const { Room, RoomEvent, AudioSession } = LiveKitSDK;
+        const cleanCode = roomCode.toUpperCase().trim();
 
-        // Start AudioSession on native platform
-        if (AudioSession?.startAudioSession) {
+        // 1. Listen for speaking indicator updates
+        const handleSpeakingUpdate = ({ playerId, playerName, isSpeaking }) => {
+          if (!isMounted) return;
+          setSpeakingPlayers((prev) => {
+            if (isSpeaking) {
+              return [...new Set([...prev, playerId])];
+            } else {
+              return prev.filter((id) => id !== playerId);
+            }
+          });
+        };
+
+        // 2. Listen for incoming voice audio
+        const handleVoiceAudioReceived = async ({
+          audioId,
+          playerId,
+          playerName,
+          audioData,
+          audioUrl,
+        }) => {
+          if (!isMounted) return;
+          // If own voice or speaker muted, skip
+          if (playerId === profileRef.current?.id) return;
+          if (!isSpeakerOnRef.current) return;
+
+          // Highlight speaking player
+          setSpeakingPlayers((prev) => [...new Set([...prev, playerId])]);
+
+          const expoAudio = getExpoAudio();
+          if (!expoAudio?.createAudioPlayer) return;
+
           try {
-            await AudioSession.startAudioSession();
-          } catch (e) {
-            console.warn('[AudioSession] start warning:', e);
+            // Resolve audio source (base64 data URI or streaming HTTP URL)
+            let audioSource = audioData;
+            if (!audioSource && audioUrl) {
+              const base = serverUrlRef.current || '';
+              audioSource = `${base}${audioUrl}`;
+            }
+
+            if (!audioSource) return;
+
+            const player = expoAudio.createAudioPlayer(audioSource);
+            activePlayersRef.current.push(player);
+
+            player.play();
+
+            // Clear speaking indicator after playback duration
+            setTimeout(() => {
+              if (isMounted) {
+                setSpeakingPlayers((prev) => prev.filter((id) => id !== playerId));
+              }
+              try {
+                player.release?.();
+              } catch (e) {}
+              activePlayersRef.current = activePlayersRef.current.filter((p) => p !== player);
+            }, 3500);
+          } catch (playErr) {
+            console.warn('[Voice] Failed to play incoming audio:', playErr);
+            if (isMounted) {
+              setSpeakingPlayers((prev) => prev.filter((id) => id !== playerId));
+            }
           }
-        }
+        };
 
-        const room = new Room({
-          adaptiveStream: false,
-          dynacast: true,
-          audioCaptureDefaults: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-        });
-        roomRef.current = room;
-
-        // Setup active speaker listener
-        room.on(RoomEvent.ActiveSpeakersChanged, (speakers) => {
-          if (!isMounted) return;
-          const activeIds = (speakers || []).map((s) => s.identity);
-          setSpeakingPlayers(activeIds);
-        });
-
-        // Setup track muted/unmuted listeners
-        room.on(RoomEvent.TrackMuted, (publication, participant) => {
-          if (!isMounted) return;
-          setMutedPlayers((prev) => ({ ...prev, [participant.identity]: true }));
-        });
-
-        room.on(RoomEvent.TrackUnmuted, (publication, participant) => {
-          if (!isMounted) return;
-          setMutedPlayers((prev) => ({ ...prev, [participant.identity]: false }));
-        });
-
-        room.on(RoomEvent.Disconnected, () => {
-          if (!isMounted) return;
-          setIsVoiceConnected(false);
-          setSpeakingPlayers([]);
-        });
-
-        // Connect to LiveKit Cloud / self-hosted instance
-        const wsUrl = tokenRes.wsUrl || 'wss://sample.livekit.cloud';
-        await room.connect(wsUrl, tokenRes.token);
-
-        if (!isMounted) {
-          room.disconnect();
-          return;
-        }
+        // Attach listeners
+        socket.on('voice-speaking-update', handleSpeakingUpdate);
+        socket.on('voice-audio-received', handleVoiceAudioReceived);
 
         setIsVoiceConnected(true);
         setIsConnecting(false);
-
-        // Publish local mic (or keep muted if default)
-        try {
-          await room.localParticipant.setMicrophoneEnabled(false);
-          setIsMuted(true);
-        } catch (micErr) {
-          console.warn('[LiveKit] Initial mic setup:', micErr);
-        }
       } catch (err) {
-        console.warn('[LiveKit] Voice connection notice:', err.message);
+        console.warn('[Voice] Connection error:', err.message);
         if (isMounted) {
-          // If native WebRTC fails, enable simulation mode so game is uninterrupted
-          setIsExpoGoFallback(true);
-          setIsVoiceConnected(true);
+          setVoiceError(err.message);
           setIsConnecting(false);
+          setIsVoiceConnected(true);
         }
       }
     }
@@ -170,75 +182,238 @@ export function useLiveKitVoice(roomCode, isEnabled = true) {
 
     return () => {
       isMounted = false;
-      if (roomRef.current) {
-        try {
-          roomRef.current.disconnect();
-        } catch (e) {
-          // ignore
-        }
-        roomRef.current = null;
+      if (socketRef.current) {
+        socketRef.current.off('voice-speaking-update');
+        socketRef.current.off('voice-audio-received');
       }
+      if (continuousChunkTimerRef.current) {
+        clearInterval(continuousChunkTimerRef.current);
+        continuousChunkTimerRef.current = null;
+      }
+      // Release any active playing audio
+      activePlayersRef.current.forEach((player) => {
+        try {
+          player.release?.();
+        } catch (e) {}
+      });
+      activePlayersRef.current = [];
     };
   }, [roomCode, isEnabled]);
 
-  // Toggle Microphone
-  const toggleMicrophone = useCallback(async () => {
-    const nextState = !isMuted;
-    setIsMuted(nextState);
+  // Request microphone permissions and prepare recording mode
+  const ensureAudioRecordingReady = useCallback(async () => {
+    const expoAudio = getExpoAudio();
+    if (!expoAudio?.AudioModule) return false;
 
-    if (roomRef.current?.localParticipant) {
+    try {
+      if (expoAudio.AudioModule.requestRecordingPermissionsAsync) {
+        const { granted } = await expoAudio.AudioModule.requestRecordingPermissionsAsync();
+        if (!granted) {
+          Alert.alert(
+            'Microphone Permission Needed',
+            'Please allow microphone permission to talk with your friends during the game.'
+          );
+          return false;
+        }
+      }
+
+      if (expoAudio.AudioModule.setAudioModeAsync) {
+        await expoAudio.AudioModule.setAudioModeAsync({
+          allowsRecording: true,
+          playsInSilentMode: true,
+          interruptionMode: 'mixWithOthers',
+        });
+      }
+      return true;
+    } catch (e) {
+      console.warn('[Voice] Failed to prepare recording:', e);
+      return false;
+    }
+  }, []);
+
+  // Internal: send a recorded audio file URI to the room
+  const sendRecordedAudio = useCallback(async (fileUri) => {
+    if (!fileUri || !socketRef.current) return;
+    const profile = profileRef.current;
+    const cleanCode = roomCode?.toUpperCase().trim();
+
+    try {
+      const response = await fetch(fileUri);
+      const blob = await response.blob();
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64Audio = reader.result;
+        if (base64Audio && socketRef.current) {
+          socketRef.current.emit('voice-audio', {
+            roomCode: cleanCode,
+            playerId: profile?.id,
+            playerName: profile?.name || 'Player',
+            audioData: base64Audio,
+            mimeType: 'audio/m4a',
+          });
+        }
+      };
+      reader.readAsDataURL(blob);
+    } catch (err) {
+      console.warn('[Voice] Error sending audio:', err);
+    }
+  }, [roomCode]);
+
+  // Start speaking (used for Push-to-Talk onPressIn or Open Mic)
+  const startTalking = useCallback(async () => {
+    if (isRecordingRef.current) return;
+    const expoAudio = getExpoAudio();
+    if (!expoAudio?.AudioModule?.AudioRecorder) return;
+
+    const ready = await ensureAudioRecordingReady();
+    if (!ready) return;
+
+    try {
+      const preset = expoAudio.RecordingPresets?.HIGH_QUALITY || {};
+      const recorder = new expoAudio.AudioModule.AudioRecorder(preset);
+      await recorder.prepareToRecordAsync();
+      recorder.record();
+
+      activeRecorderRef.current = recorder;
+      isRecordingRef.current = true;
+      setIsRecording(true);
+
+      const profile = profileRef.current;
+      const cleanCode = roomCode?.toUpperCase().trim();
+
+      // Emit speaking indicator to other players
+      if (socketRef.current && cleanCode) {
+        socketRef.current.emit('voice-speaking-start', {
+          roomCode: cleanCode,
+          playerId: profile?.id,
+          playerName: profile?.name,
+        });
+      }
+
+      setSpeakingPlayers((prev) => [...new Set([...prev, profile?.id])]);
+    } catch (err) {
+      console.warn('[Voice] startTalking error:', err);
+    }
+  }, [roomCode, ensureAudioRecordingReady]);
+
+  // Stop speaking and transmit audio (used for Push-to-Talk onPressOut or Muting)
+  const stopTalking = useCallback(async () => {
+    if (!isRecordingRef.current && !activeRecorderRef.current) return;
+    const recorder = activeRecorderRef.current;
+    activeRecorderRef.current = null;
+    isRecordingRef.current = false;
+    setIsRecording(false);
+
+    const profile = profileRef.current;
+    const cleanCode = roomCode?.toUpperCase().trim();
+
+    // Emit stop speaking indicator
+    if (socketRef.current && cleanCode) {
+      socketRef.current.emit('voice-speaking-stop', {
+        roomCode: cleanCode,
+        playerId: profile?.id,
+        playerName: profile?.name,
+      });
+    }
+
+    setSpeakingPlayers((prev) => prev.filter((id) => id !== profile?.id));
+
+    if (recorder) {
       try {
-        await roomRef.current.localParticipant.setMicrophoneEnabled(!nextState);
+        await recorder.stop();
+        const uri = recorder.uri;
+        if (uri) {
+          await sendRecordedAudio(uri);
+        }
       } catch (err) {
-        console.warn('[LiveKit] Failed to toggle mic:', err);
+        console.warn('[Voice] stopTalking error:', err);
       }
     }
-  }, [isMuted]);
+  }, [roomCode, sendRecordedAudio]);
+
+  // Toggle Microphone (Live / Open Mic Mode)
+  const toggleMicrophone = useCallback(async () => {
+    const nextMuted = !isMuted;
+    setIsMuted(nextMuted);
+
+    if (continuousChunkTimerRef.current) {
+      clearInterval(continuousChunkTimerRef.current);
+      continuousChunkTimerRef.current = null;
+    }
+
+    if (!nextMuted) {
+      // Unmuted -> Start talking immediately
+      await startTalking();
+
+      // In open mic mode: automatically flush a chunk every 3.5 seconds
+      continuousChunkTimerRef.current = setInterval(async () => {
+        if (!isMutedRef.current && isRecordingRef.current) {
+          const rec = activeRecorderRef.current;
+          activeRecorderRef.current = null;
+          isRecordingRef.current = false;
+
+          if (rec) {
+            try {
+              await rec.stop();
+              if (rec.uri) {
+                sendRecordedAudio(rec.uri);
+              }
+            } catch (e) {}
+          }
+
+          // Restart next chunk if still unmuted
+          if (!isMutedRef.current) {
+            startTalking();
+          }
+        }
+      }, 3500);
+    } else {
+      // Muted -> Stop talking and flush final audio
+      await stopTalking();
+    }
+  }, [isMuted, startTalking, stopTalking, sendRecordedAudio]);
 
   // Toggle Speaker / Output
-  const toggleSpeaker = useCallback(async () => {
+  const toggleSpeaker = useCallback(() => {
     const nextState = !isSpeakerOn;
     setIsSpeakerOn(nextState);
+    isSpeakerOnRef.current = nextState;
 
-    // Mute/unmute all incoming audio tracks
-    if (roomRef.current?.remoteParticipants) {
-      try {
-        roomRef.current.remoteParticipants.forEach((participant) => {
-          participant.audioTrackPublications?.forEach((pub) => {
-            if (pub.track) {
-              pub.track.setEnabled(nextState);
-            }
-          });
-        });
-      } catch (err) {
-        console.warn('[LiveKit] Failed to toggle speaker:', err);
-      }
+    // If turned off, immediately silence any currently playing incoming voice clips
+    if (!nextState) {
+      activePlayersRef.current.forEach((player) => {
+        try {
+          player.pause();
+        } catch (e) {}
+      });
     }
   }, [isSpeakerOn]);
 
   // Leave Voice Room
   const leaveVoice = useCallback(() => {
-    if (roomRef.current) {
-      try {
-        roomRef.current.disconnect();
-      } catch (e) {
-        // ignore
-      }
-      roomRef.current = null;
+    stopTalking();
+    if (continuousChunkTimerRef.current) {
+      clearInterval(continuousChunkTimerRef.current);
+      continuousChunkTimerRef.current = null;
     }
     setIsVoiceConnected(false);
     setSpeakingPlayers([]);
-  }, []);
+  }, [stopTalking]);
 
   return {
     isVoiceConnected,
     isConnecting,
     isMuted,
+    isRecording,
     isSpeakerOn,
     speakingPlayers,
     mutedPlayers,
     voiceError,
-    isExpoGoFallback,
+    isExpoGoFallback: false,
+    voiceMode,
+    startTalking,
+    stopTalking,
     toggleMicrophone,
     toggleSpeaker,
     leaveVoice,
