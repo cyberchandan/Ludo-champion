@@ -196,6 +196,10 @@ function setupGameSocket(io) {
     socket.on('sync-state', async ({ roomCode }, callback) => {
       try {
         const cleanCode = roomCode?.toUpperCase().trim();
+        if (cleanCode) {
+          socket.join(cleanCode);
+          socket.roomCode = cleanCode;
+        }
         const room = await RoomManager.getRoom(cleanCode);
         if (room && callback) {
           callback({
@@ -230,6 +234,52 @@ function setupGameSocket(io) {
         fromPlayerId: socket.playerId,
         signal,
       });
+    });
+
+    // Voice Talk: Join room channel for voice talk
+    socket.on('join-voice-room', ({ roomCode, playerId, playerName }) => {
+      const cleanCode = (roomCode || socket.roomCode)?.toUpperCase().trim();
+      if (cleanCode) {
+        socket.join(cleanCode);
+        socket.roomCode = cleanCode;
+        if (playerId) socket.playerId = playerId;
+        console.log(`[Socket] Voice channel joined: ${playerName || playerId || 'Player'} in room ${cleanCode} (socket: ${socket.id})`);
+      }
+    });
+
+    // Voice Talk: Real-time Live Voice Chunks (Works in Expo Go and all devices)
+    socket.on('voice-chunk', ({ roomCode, playerId, playerName, audioData }) => {
+      const cleanCode = (roomCode || socket.roomCode)?.toUpperCase().trim();
+      if (!cleanCode || !audioData) return;
+
+      // Ensure sender socket is registered in the room
+      socket.join(cleanCode);
+      socket.roomCode = cleanCode;
+      if (playerId) socket.playerId = playerId;
+
+      const audioId = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      let cleanBase64 = audioData;
+      if (cleanBase64.includes('base64,')) {
+        cleanBase64 = cleanBase64.split('base64,')[1];
+      }
+
+      try {
+        const buffer = Buffer.from(cleanBase64, 'base64');
+        voiceStore.saveAudio(audioId, buffer, 'audio/m4a');
+
+        console.log(`[Socket] Relaying voice chunk (${buffer.length} bytes) from ${playerName || playerId || 'Player'} to room ${cleanCode}`);
+
+        // Broadcast to everyone in room (clients filter out their own playerId to prevent echo)
+        io.to(cleanCode).emit('voice-chunk-received', {
+          playerId: playerId || socket.playerId,
+          playerName: playerName || 'Player',
+          audioId,
+          audioData: cleanBase64,
+          audioUrl: `/api/voice/stream/${audioId}`,
+        });
+      } catch (err) {
+        console.warn('[Socket] Failed to cache voice chunk:', err);
+      }
     });
 
     // Voice Talk: Speaking status update (start speaking)

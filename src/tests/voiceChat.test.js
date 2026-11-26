@@ -64,5 +64,19 @@ describe('Voice Chat System', () => {
       voiceStore.deleteAudio(audioId);
       expect(voiceStore.getAudio(audioId)).toBeNull();
     });
+
+    it('handles base64 voice chunk decoding properly', () => {
+      const sampleAudio = 'SGVsbG8gV29ybGQgTGl2ZSBWb2ljZQ=='; // "Hello World Live Voice"
+      const dataUri = `data:audio/m4a;base64,${sampleAudio}`;
+      const cleanBase64 = dataUri.split('base64,')[1];
+      const buffer = Buffer.from(cleanBase64, 'base64');
+
+      const audioId = 'test_chunk_456';
+      voiceStore.saveAudio(audioId, buffer, 'audio/m4a');
+
+      const retrieved = voiceStore.getAudio(audioId);
+      expect(retrieved).not.toBeNull();
+      expect(retrieved.buffer.toString('utf8')).toBe('Hello World Live Voice');
+    });
   });
 });

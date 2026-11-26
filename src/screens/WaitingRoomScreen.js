@@ -223,14 +223,12 @@ export default function WaitingRoomScreen({
           isVoiceConnected={voice.isVoiceConnected}
           isConnecting={voice.isConnecting}
           isMuted={voice.isMuted}
-          isRecording={voice.isRecording}
           isSpeakerOn={voice.isSpeakerOn}
           speakingPlayers={voice.speakingPlayers}
           players={players}
+          voiceMode={voice.voiceMode}
           onToggleMic={voice.toggleMicrophone}
           onToggleSpeaker={voice.toggleSpeaker}
-          startTalking={voice.startTalking}
-          stopTalking={voice.stopTalking}
         />
 
         {/* Players Section Header */}

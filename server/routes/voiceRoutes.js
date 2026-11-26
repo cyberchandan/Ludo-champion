@@ -89,6 +89,8 @@ router.get('/stream/:audioId', (req, res) => {
     return res.status(404).send('Voice clip expired or not found');
   }
 
+  console.log(`[Voice] Streaming voice clip ${audioId} (${audioItem.buffer.length} bytes)`);
+
   res.set({
     'Content-Type': audioItem.mimeType || 'audio/m4a',
     'Content-Length': audioItem.buffer.length,

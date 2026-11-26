@@ -41,6 +41,16 @@ export function useMultiplayerLudo(roomCode, initialGameState = null) {
       socket.on('connect', () => {
         if (!isMounted) return;
         setConnectionStatus('CONNECTED');
+        // Re-join room channel on reconnect
+        socket.emit('join-room', {
+          roomCode,
+          playerId: userProfile.id,
+          playerName: userProfile.name,
+        }, (res) => {
+          if (res?.success && isMounted && res.gameState) {
+            setGameState(res.gameState);
+          }
+        });
         // On reconnection, request full authoritative state sync
         socket.emit('sync-state', { roomCode }, (res) => {
           if (res?.success && res.gameState && isMounted) {
